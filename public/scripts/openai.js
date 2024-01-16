@@ -219,6 +219,7 @@ const default_settings = {
     custom_include_body: '',
     custom_exclude_body: '',
     custom_include_headers: '',
+    custom_force_instruct: false,
     windowai_model: '',
     openrouter_model: openrouter_website_model,
     openrouter_use_fallback: false,
@@ -286,6 +287,7 @@ const oai_settings = {
     custom_include_body: '',
     custom_exclude_body: '',
     custom_include_headers: '',
+    custom_force_instruct: false,
     windowai_model: '',
     openrouter_model: openrouter_website_model,
     openrouter_use_fallback: false,
@@ -644,6 +646,10 @@ export function isOpenRouterWithInstruct() {
     return oai_settings.chat_completion_source === chat_completion_sources.OPENROUTER && oai_settings.openrouter_force_instruct && power_user.instruct.enabled;
 }
 
+export function isCustomWithInstruct() {
+    return oai_settings.chat_completion_source === chat_completion_sources.CUSTOM && oai_settings.custom_force_instruct && power_user.instruct.enabled;
+}
+
 /**
  * Populates the chat history of the conversation.
  * @param {object[]} messages - Array containing all messages.
@@ -670,8 +676,9 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
 
     // Reserve budget for continue nudge
     let continueMessage = null;
-    const instruct = isOpenRouterWithInstruct();
-    if (type === 'continue' && cyclePrompt && !instruct) {
+    const openrouter_instruct = isOpenRouterWithInstruct();
+    const custom_instruct = isCustomWithInstruct();
+    if (type === 'continue' && cyclePrompt && (!openrouter_instruct || !custom_instruct)) {
         const promptObject = oai_settings.continue_prefill ?
             {
                 identifier: 'continueNudge',
@@ -1517,6 +1524,7 @@ async function sendOpenAIRequest(type, messages, signal) {
     const isOAI = oai_settings.chat_completion_source == chat_completion_sources.OPENAI;
     const isMistral = oai_settings.chat_completion_source == chat_completion_sources.MISTRALAI;
     const isCustom = oai_settings.chat_completion_source == chat_completion_sources.CUSTOM;
+    const isCustomInstruct = (isOAI && textCompletionModels.includes(oai_settings.openai_model)) || (isCustom && oai_settings.custom_force_instruct && power_user.instruct.enabled); 
     const isTextCompletion = (isOAI && textCompletionModels.includes(oai_settings.openai_model)) || (isOpenRouter && oai_settings.openrouter_force_instruct && power_user.instruct.enabled);
     const isQuiet = type === 'quiet';
     const isImpersonate = type === 'impersonate';
@@ -1524,6 +1532,11 @@ async function sendOpenAIRequest(type, messages, signal) {
     const stream = oai_settings.stream_openai && !isQuiet && !isScale && !isAI21 && !(isGoogle && oai_settings.google_model.includes('bison'));
 
     if (isTextCompletion && isOpenRouter) {
+        messages = convertChatCompletionToInstruct(messages, type);
+        replaceItemizedPromptText(messageId, messages);
+    }
+
+    if (isCustom && isCustomInstruct) {
         messages = convertChatCompletionToInstruct(messages, type);
         replaceItemizedPromptText(messageId, messages);
     }
@@ -2387,6 +2400,7 @@ function loadOpenAISettings(data, settings) {
     oai_settings.openrouter_sort_models = settings.openrouter_sort_models ?? default_settings.openrouter_sort_models;
     oai_settings.openrouter_use_fallback = settings.openrouter_use_fallback ?? default_settings.openrouter_use_fallback;
     oai_settings.openrouter_force_instruct = settings.openrouter_force_instruct ?? default_settings.openrouter_force_instruct;
+    oai_settings.custom_force_instruct = settings.custom_force_instruct ?? default_settings.custom_force_instruct;
     oai_settings.ai21_model = settings.ai21_model ?? default_settings.ai21_model;
     oai_settings.mistralai_model = settings.mistralai_model ?? default_settings.mistralai_model;
     oai_settings.custom_model = settings.custom_model ?? default_settings.custom_model;
@@ -2465,6 +2479,7 @@ function loadOpenAISettings(data, settings) {
     $('#scale-alt').prop('checked', oai_settings.use_alt_scale);
     $('#openrouter_use_fallback').prop('checked', oai_settings.openrouter_use_fallback);
     $('#openrouter_force_instruct').prop('checked', oai_settings.openrouter_force_instruct);
+    $('#custom_force_instruct').prop('checked', oai_settings.custom_force_instruct);
     $('#openrouter_group_models').prop('checked', oai_settings.openrouter_group_models);
     $('#squash_system_messages').prop('checked', oai_settings.squash_system_messages);
     $('#continue_prefill').prop('checked', oai_settings.continue_prefill);
@@ -2641,6 +2656,7 @@ async function saveOpenAIPreset(name, settings, triggerUi = true) {
         custom_include_body: settings.custom_include_body,
         custom_exclude_body: settings.custom_exclude_body,
         custom_include_headers: settings.custom_include_headers,
+        custom_force_instruct: settings.custom_force_instruct,
         google_model: settings.google_model,
         temperature: settings.temp_openai,
         frequency_penalty: settings.freq_pen_openai,
@@ -3027,6 +3043,7 @@ function onSettingsPresetChange() {
         custom_include_body: ['#custom_include_body', 'custom_include_body', false],
         custom_exclude_body: ['#custom_exclude_body', 'custom_exclude_body', false],
         custom_include_headers: ['#custom_include_headers', 'custom_include_headers', false],
+        custom_force_instruct: ['#custom_force_instruct', 'custom_force_instruct', true],
         google_model: ['#model_google_select', 'google_model', false],
         openai_max_context: ['#openai_max_context', 'openai_max_context', false],
         openai_max_tokens: ['#openai_max_tokens', 'openai_max_tokens', false],
@@ -3684,7 +3701,7 @@ export function isImageInliningSupported() {
         case chat_completion_sources.OPENROUTER:
             return !oai_settings.openrouter_force_instruct && (oai_settings.openrouter_model.includes(gpt4v) || oai_settings.openrouter_model.includes(llava));
         case chat_completion_sources.CUSTOM:
-            return oai_settings.custom_model.includes(gpt4v) || oai_settings.custom_model.includes(llava) || oai_settings.custom_model.includes(geminiProV);
+            return !oai_settings.custom_force_instruct && (oai_settings.custom_model.includes(gpt4v) || oai_settings.custom_model.includes(llava) || oai_settings.custom_model.includes(geminiProV));
         default:
             return false;
     }
@@ -3979,6 +3996,11 @@ $(document).ready(async function () {
 
     $('#openrouter_force_instruct').on('input', function () {
         oai_settings.openrouter_force_instruct = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#custom_force_instruct').on('input', function () {
+        oai_settings.custom_force_instruct = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 
