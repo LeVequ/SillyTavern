@@ -276,6 +276,7 @@ const default_settings = {
     custom_include_body: '',
     custom_exclude_body: '',
     custom_include_headers: '',
+    custom_force_instruct: false,
     windowai_model: '',
     openrouter_model: openrouter_website_model,
     openrouter_use_fallback: false,
@@ -357,6 +358,7 @@ const oai_settings = {
     custom_include_body: '',
     custom_exclude_body: '',
     custom_include_headers: '',
+    custom_force_instruct: false,
     windowai_model: '',
     openrouter_model: openrouter_website_model,
     openrouter_use_fallback: false,
@@ -786,6 +788,10 @@ export function isOpenRouterWithInstruct() {
     return oai_settings.chat_completion_source === chat_completion_sources.OPENROUTER && oai_settings.openrouter_force_instruct && power_user.instruct.enabled;
 }
 
+export function isCustomWithInstruct() {
+    return oai_settings.chat_completion_source === chat_completion_sources.CUSTOM && oai_settings.custom_force_instruct && power_user.instruct.enabled;
+}
+
 /**
  * Populates the chat history of the conversation.
  * @param {object[]} messages - Array containing all messages.
@@ -816,7 +822,7 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
 
     // Reserve budget for continue nudge
     let continueMessage = null;
-    const instruct = isOpenRouterWithInstruct();
+    const instruct = isOpenRouterWithInstruct() || isCustomWithInstruct();
     if (type === 'continue' && cyclePrompt && !instruct && !oai_settings.continue_prefill) {
         const promptObject = {
             identifier: 'continueNudge',
@@ -1811,7 +1817,7 @@ async function sendOpenAIRequest(type, messages, signal) {
     const isPerplexity = oai_settings.chat_completion_source == chat_completion_sources.PERPLEXITY;
     const isGroq = oai_settings.chat_completion_source == chat_completion_sources.GROQ;
     const is01AI = oai_settings.chat_completion_source == chat_completion_sources.ZEROONEAI;
-    const isTextCompletion = (isOAI && textCompletionModels.includes(oai_settings.openai_model)) || (isOpenRouter && oai_settings.openrouter_force_instruct && power_user.instruct.enabled);
+    const isTextCompletion = (isOAI && textCompletionModels.includes(oai_settings.openai_model)) || (isOpenRouter && oai_settings.openrouter_force_instruct && power_user.instruct.enabled) || (isCustom && oai_settings.custom_force_instruct && power_user.instruct.enabled);
     const isQuiet = type === 'quiet';
     const isImpersonate = type === 'impersonate';
     const isContinue = type === 'continue';
@@ -1819,7 +1825,7 @@ async function sendOpenAIRequest(type, messages, signal) {
     const useLogprobs = !!power_user.request_token_probabilities;
     const canMultiSwipe = oai_settings.n > 1 && !isContinue && !isImpersonate && !isQuiet && (isOAI || isCustom);
 
-    if (isTextCompletion && isOpenRouter) {
+    if (isTextCompletion && (isOpenRouter || isCustom)) {
         messages = convertChatCompletionToInstruct(messages, type);
         replaceItemizedPromptText(messageId, messages);
     }
@@ -1947,6 +1953,10 @@ async function sendOpenAIRequest(type, messages, signal) {
         generate_data['custom_exclude_body'] = oai_settings.custom_exclude_body;
         generate_data['custom_include_headers'] = oai_settings.custom_include_headers;
         generate_data['custom_prompt_post_processing'] = oai_settings.custom_prompt_post_processing;
+
+        if (isTextCompletion) {
+            generate_data['stop'] = getStoppingStrings(isImpersonate, isContinue);
+        }
     }
 
     if (isCohere) {
@@ -3047,6 +3057,7 @@ function loadOpenAISettings(data, settings) {
     oai_settings.custom_exclude_body = settings.custom_exclude_body ?? default_settings.custom_exclude_body;
     oai_settings.custom_include_headers = settings.custom_include_headers ?? default_settings.custom_include_headers;
     oai_settings.custom_prompt_post_processing = settings.custom_prompt_post_processing ?? default_settings.custom_prompt_post_processing;
+    oai_settings.custom_force_instruct = settings.custom_force_instruct ?? default_settings.custom_force_instruct;
     oai_settings.google_model = settings.google_model ?? default_settings.google_model;
     oai_settings.chat_completion_source = settings.chat_completion_source ?? default_settings.chat_completion_source;
     oai_settings.api_url_scale = settings.api_url_scale ?? default_settings.api_url_scale;
@@ -3146,6 +3157,7 @@ function loadOpenAISettings(data, settings) {
     $('#squash_system_messages').prop('checked', oai_settings.squash_system_messages);
     $('#continue_prefill').prop('checked', oai_settings.continue_prefill);
     $('#openai_function_calling').prop('checked', oai_settings.function_calling);
+    $('#custom_force_instruct').prop('checked', oai_settings.custom_force_instruct);
     if (settings.impersonation_prompt !== undefined) oai_settings.impersonation_prompt = settings.impersonation_prompt;
 
     $('#impersonation_prompt_textarea').val(oai_settings.impersonation_prompt);
@@ -3388,6 +3400,7 @@ async function saveOpenAIPreset(name, settings, triggerUi = true) {
         custom_exclude_body: settings.custom_exclude_body,
         custom_include_headers: settings.custom_include_headers,
         custom_prompt_post_processing: settings.custom_prompt_post_processing,
+        custom_force_instruct: settings.custom_force_instruct,
         google_model: settings.google_model,
         temperature: settings.temp_openai,
         frequency_penalty: settings.freq_pen_openai,
@@ -3829,6 +3842,7 @@ function onSettingsPresetChange() {
         custom_exclude_body: ['#custom_exclude_body', 'custom_exclude_body', false],
         custom_include_headers: ['#custom_include_headers', 'custom_include_headers', false],
         custom_prompt_post_processing: ['#custom_prompt_post_processing', 'custom_prompt_post_processing', false],
+        custom_force_instruct: ['#custom_force_instruct', 'custom_force_instruct', true],
         google_model: ['#model_google_select', 'google_model', false],
         openai_max_context: ['#openai_max_context', 'openai_max_context', false],
         openai_max_tokens: ['#openai_max_tokens', 'openai_max_tokens', false],
@@ -4777,7 +4791,7 @@ export function isImageInliningSupported() {
         case chat_completion_sources.OPENROUTER:
             return !oai_settings.openrouter_force_instruct;
         case chat_completion_sources.CUSTOM:
-            return true;
+            return !oai_settings.custom_force_instruct;
         case chat_completion_sources.ZEROONEAI:
             return visionSupportedModels.some(model => oai_settings.zerooneai_model.includes(model));
         default:
@@ -5219,6 +5233,11 @@ $(document).ready(async function () {
 
     $('#openrouter_force_instruct').on('input', function () {
         oai_settings.openrouter_force_instruct = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#custom_force_instruct').on('input', function () {
+        oai_settings.custom_force_instruct = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 

@@ -98,6 +98,7 @@ import {
     chat_completion_sources,
     getChatCompletionModel,
     isOpenRouterWithInstruct,
+    isCustomWithInstruct,
     proxies,
     loadProxyPresets,
     selected_proxy,
@@ -3877,7 +3878,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
     if (isContinue) {
         // Coping mechanism for OAI spacing
-        const isForceInstruct = isOpenRouterWithInstruct();
+        const isForceInstruct = isOpenRouterWithInstruct() || isCustomWithInstruct();
         if (main_api === 'openai' && !isForceInstruct && !cyclePrompt.endsWith(' ')) {
             cyclePrompt += oai_settings.continue_postfix;
             continue_mag += oai_settings.continue_postfix;
