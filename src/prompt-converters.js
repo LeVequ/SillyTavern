@@ -132,7 +132,7 @@ function convertClaudeMessages(messages, prefillString, useSysPrompt, humanMsgFi
     });
 
     // Shouldn't be conditional anymore, messages api expects the last role to be user unless we're explicitly prefilling
-    if (prefillString) {
+    if (prefillString && !(prefillString === 'custom')) {
         messages.push({
             role: 'assistant',
             content: prefillString.trimEnd(),
@@ -188,6 +188,14 @@ function convertClaudeMessages(messages, prefillString, useSysPrompt, humanMsgFi
             ];
         }
     });
+
+    // TODO: Check if shift works (it does)
+    if (useSysPrompt && prefillString === 'custom') {
+        mergedMessages.unshift({
+            role: 'system',
+            content: systemPrompt.trim(),
+        });
+    }
 
     return { messages: mergedMessages, systemPrompt: systemPrompt.trim() };
 }

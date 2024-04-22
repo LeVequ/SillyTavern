@@ -207,6 +207,7 @@ const continue_postfix_types = {
 const custom_prompt_post_processing_types = {
     NONE: '',
     CLAUDE: 'claude',
+    CLAUDESYS: 'claudesys',
 };
 
 const sensitiveFields = [
