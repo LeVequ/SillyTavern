@@ -33,6 +33,8 @@ function postProcessPrompt(messages, type, charName, userName) {
         case 'claude':
             return convertClaudeMessages(messages, '', false, '', charName, userName).messages;
         case 'claudesys':
+            return convertClaudeMessages(messages, 'custom', true, '', charName, userName).messages;
+        case 'claudesyswp':
             return convertClaudeMessages(messages, 'custom', true, '(OOC: Write the first message to get the story started.)', charName, userName).messages;
         default:
             return messages;

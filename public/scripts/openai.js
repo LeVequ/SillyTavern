@@ -208,6 +208,7 @@ const custom_prompt_post_processing_types = {
     NONE: '',
     CLAUDE: 'claude',
     CLAUDESYS: 'claudesys',
+    CLAUDESYSWP: 'claudesyswp',
 };
 
 const sensitiveFields = [
